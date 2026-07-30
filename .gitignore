@@ -1,0 +1,13 @@
+.idea
+.vscode
+.codebuddy
+.ai
+Thumbs.db
+.DS_Store
+bin/
+obj/
+*.user
+
+# local build artifacts
+CaddyToolsWin.exe
+build.log

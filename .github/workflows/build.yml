@@ -1,0 +1,54 @@
+name: Build Windows x64
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version / tag, e.g. v1.0.0'
+        required: true
+        default: 'v0.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and package (win64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build with system csc (NET Framework 4.8)
+        shell: cmd
+        run: |
+          set CSC=%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
+          if not exist "%CSC%" set CSC=%SystemRoot%\Microsoft.NET\Framework\v4.0.30319\csc.exe
+          if not exist "%CSC%" ( echo Cannot find csc.exe. NET Framework 4.8 is required. & exit /b 1 )
+          "%CSC%" /target:winexe /out:CaddyToolsWin.exe /win32icon:caddy.ico /res:caddy.ico /r:System.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll Program.cs
+
+      - name: Package zip
+        shell: pwsh
+        run: |
+          $ver = "${{ github.event.inputs.version }}"
+          $zip = "CaddyToolsWin-$ver-win64.zip"
+          Compress-Archive -Path CaddyToolsWin.exe, README.md, caddy.ico -DestinationPath $zip -Force
+          echo "ZIP=$zip" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CaddyToolsWin-${{ github.event.inputs.version }}-win64
+          path: ${{ env.ZIP }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: CaddyToolsWin ${{ github.event.inputs.version }}
+          files: ${{ env.ZIP }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
