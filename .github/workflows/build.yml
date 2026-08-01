@@ -43,6 +43,7 @@ jobs:
           } else {
             $v = "${{ github.event.inputs.version }}"
           }
+          $v = $v -replace '^v',''
           echo "version=$v" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       - name: Package portable zip
