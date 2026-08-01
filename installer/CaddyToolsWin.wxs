@@ -14,7 +14,10 @@
       Manufacturer="Caddy Tools Win"
       UpgradeCode="E3F8A1B2-7C4D-4A9E-9B1F-2D6C8E0A4B7C">
 
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" Platform="x64" />
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" Platform="x64" InstallPrivileges="limited" />
+
+    <Property Id="ALLUSERS" Value="2" />
+    <Property Id="MSIINSTALLPERUSER" Value="1" />
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of Caddy Tools Win is already installed." />
     <MediaTemplate EmbedCab="yes" />
@@ -51,7 +54,7 @@
             <Shortcut Id="StartMenuShortcut"
               Directory="ProgramMenuDir"
               Name="Caddy Tools Win"
-              Target="[INSTALLDIR]CaddyToolsWin.exe"
+              Target="[INSTALLDIR]\CaddyToolsWin.exe"
               Icon="CaddyIcon.exe"
               WorkingDirectory="INSTALLDIR"
               Description="Edit and manage a Caddy / FrankenPHP Caddyfile" />
@@ -72,7 +75,7 @@
           <Shortcut Id="DesktopShortcut"
             Directory="DesktopFolder"
             Name="Caddy Tools Win"
-            Target="[INSTALLDIR]CaddyToolsWin.exe"
+            Target="[INSTALLDIR]\CaddyToolsWin.exe"
             Icon="CaddyIcon.exe"
             WorkingDirectory="INSTALLDIR"
             Description="Edit and manage a Caddy / FrankenPHP Caddyfile" />
