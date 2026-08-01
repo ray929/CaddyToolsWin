@@ -63,7 +63,7 @@ jobs:
           "%WIX%\candle.exe" -dProjectDir="%CD%" -dProductVersion="%version%" installer\CaddyToolsWin.wxs -out installer\CaddyToolsWin.wixobj
           "%WIX%\light.exe" installer\CaddyToolsWin.wixobj -out "CaddyToolsWin-%version%-setup-win64.msi"
           if not exist "CaddyToolsWin-%version%-setup-win64.msi" ( echo msi was not produced. & exit /b 1 )
-          echo "SETUP_MSI=CaddyToolsWin-%version%-setup-win64.msi" >> "%GITHUB_ENV%"
+          echo SETUP_MSI=CaddyToolsWin-%version%-setup-win64.msi>>"%GITHUB_ENV%"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
