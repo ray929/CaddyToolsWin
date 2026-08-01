@@ -60,8 +60,8 @@ jobs:
           if not exist "%WIX%" set WIX=%ProgramFiles(x86)%\WiX Toolset v3.11\bin
           if not exist "%WIX%" set WIX=%ProgramFiles%\WiX Toolset v3.11\bin
           if not exist "%WIX%" ( echo Cannot find WiX Toolset. & exit /b 1 )
-          "%WIX%\candle.exe" -dProjectDir="%CD%" -dProductVersion="%version%" installer\CaddyToolsWin.wxs -out installer\CaddyToolsWin.wixobj
-          "%WIX%\light.exe" installer\CaddyToolsWin.wixobj -out "CaddyToolsWin-%version%-setup-win64.msi"
+          "%WIX%\candle.exe" -ext WixUIExtension -dProjectDir="%CD%" -dProductVersion="%version%" installer\CaddyToolsWin.wxs -out installer\CaddyToolsWin.wixobj
+          "%WIX%\light.exe" -ext WixUIExtension installer\CaddyToolsWin.wixobj -out "CaddyToolsWin-%version%-setup-win64.msi"
           if not exist "CaddyToolsWin-%version%-setup-win64.msi" ( echo msi was not produced. & exit /b 1 )
           echo SETUP_MSI=CaddyToolsWin-%version%-setup-win64.msi>>"%GITHUB_ENV%"
 

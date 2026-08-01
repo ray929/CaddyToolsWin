@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:ui="http://schemas.microsoft.com/wix/UIExtension">
   <!--
     Build on the GitHub Windows runner (WiX Toolset v3.11+ is preinstalled):
-      candle -dProjectDir="%CD%" installer\CaddyToolsWin.wxs -out installer\CaddyToolsWin.wixobj
-      light  installer\CaddyToolsWin.wixobj -out CaddyToolsWin-setup.msi
+      candle -ext WixUIExtension -dProjectDir="%CD%" -dProductVersion="<ver>" installer\CaddyToolsWin.wxs -out installer\CaddyToolsWin.wixobj
+      light -ext WixUIExtension installer\CaddyToolsWin.wixobj -out CaddyToolsWin-<ver>-setup-win64.msi
   -->
   <Product
       Id="*"
@@ -27,6 +28,10 @@
     <Condition Message="[ProductName] requires .NET Framework 4.8 or later.">
       <![CDATA[Installed OR (NETFRAMEWORK48 >= "#528040")]]>
     </Condition>
+
+    <!-- Install-dir UI with a finish dialog -->
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <UIRef Id="WixUI_InstallDir" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
@@ -57,12 +62,28 @@
       <Directory Id="ProgramMenuFolder">
         <Directory Id="ProgramMenuDir" Name="Caddy Tools Win" />
       </Directory>
+
+      <Directory Id="DesktopFolder" Name="Desktop">
+        <Component Id="DesktopShortcut" Guid="3C4D5E6F-7081-4A2B-9D0E-2F3A4B5C6D7E" Win64="yes">
+          <Shortcut Id="DesktopShortcut"
+            Directory="DesktopFolder"
+            Name="Caddy Tools Win"
+            Target="[INSTALLDIR]CaddyToolsWin.exe"
+            Icon="CaddyIcon.exe"
+            WorkingDirectory="INSTALLDIR"
+            Description="Edit and manage a Caddy / FrankenPHP Caddyfile" />
+          <RegistryValue Root="HKCU"
+            Key="Software\CaddyToolsWin"
+            Name="desktop" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
     </Directory>
 
     <Icon Id="CaddyIcon.exe" SourceFile="$(var.ProjectDir)\caddy.ico" />
     <Feature Id="ProductFeature" Title="Caddy Tools Win" Level="1">
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
     </Feature>
   </Product>
 </Wix>
