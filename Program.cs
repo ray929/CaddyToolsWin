@@ -6,6 +6,7 @@ using System.Drawing;
 using Microsoft.Win32;
 using System.ServiceProcess;
 using System.Diagnostics;
+using FastColoredTextBoxNS;
 
 namespace CaddyToolsWin
 {
@@ -123,7 +124,7 @@ namespace CaddyToolsWin
         private ToolStripMenuItem validateItem;
         private ToolStripMenuItem formatItem;
         private ToolStripMenuItem reloadItem;
-        private TextBox editor;
+        private FastColoredTextBox editor;
 
         private AppConfig config;
         private string caddyFilePath;
@@ -140,22 +141,23 @@ namespace CaddyToolsWin
         {
             menu = new MenuStrip();
             saveItem = new ToolStripMenuItem("Save", null, (s, e) => Save(), Keys.Control | Keys.S);
-            openItem = new ToolStripMenuItem("Open", null, (s, e) => OpenDirectory(), Keys.Control | Keys.O);
-            validateItem = new ToolStripMenuItem("Validate", null, (s, e) => ValidateConfig(), Keys.Control | Keys.V);
-            formatItem = new ToolStripMenuItem("Format", null, (s, e) => FormatConfig(), Keys.Control | Keys.F);
-            reloadItem = new ToolStripMenuItem("Reload", null, (s, e) => Reload(), Keys.Control | Keys.R);
+            openItem = new ToolStripMenuItem("Open", null, (s, e) => OpenDirectory());
+            validateItem = new ToolStripMenuItem("Validate", null, (s, e) => ValidateConfig());
+            formatItem = new ToolStripMenuItem("Format", null, (s, e) => FormatConfig());
+            reloadItem = new ToolStripMenuItem("Reload", null, (s, e) => Reload());
             menu.Items.AddRange(new ToolStripItem[] { saveItem, openItem, validateItem, formatItem, reloadItem });
 
-            editor = new TextBox
+            editor = new FastColoredTextBox
             {
                 Dock = DockStyle.Fill,
-                Multiline = true,
-                ScrollBars = ScrollBars.Both,
-                AcceptsTab = true,
-                WordWrap = false,
                 Font = new Font("Consolas", 10.5F, FontStyle.Regular, GraphicsUnit.Point),
+                Language = Language.Custom,
+                ShowLineNumbers = true,
+                WordWrap = false,
+                TabLength = 4,
                 Text = ""
             };
+            SetupCaddySyntax();
             editor.TextChanged += Editor_TextChanged;
 
             Controls.Add(editor);
@@ -188,6 +190,37 @@ namespace CaddyToolsWin
                 }
             }
             catch { /* keep default icon */ }
+        }
+
+        // --- Caddyfile syntax highlighting (FastColoredTextBox) ----------------
+
+        private TextStyle styleComment;
+        private TextStyle styleDirective;
+        private TextStyle styleAddr;
+        private TextStyle styleString;
+        private TextStyle stylePlaceholder;
+
+        private void SetupCaddySyntax()
+        {
+            styleComment = new TextStyle(Brushes.Gray, null, FontStyle.Italic);
+            styleDirective = new TextStyle(Brushes.Navy, null, FontStyle.Bold);
+            styleAddr = new TextStyle(Brushes.Teal, null, FontStyle.Regular);
+            styleString = new TextStyle(Brushes.Maroon, null, FontStyle.Regular);
+            stylePlaceholder = new TextStyle(Brushes.Purple, null, FontStyle.Regular);
+
+            editor.TextChanged += (s, e) => HighlightCaddy(e.ChangedRange);
+        }
+
+        private void HighlightCaddy(Range range)
+        {
+            range.ClearStyle(StyleIndex.All);
+            // Comments and strings first, then directives, addresses, placeholders.
+            range.SetStyle(styleComment, @"#.*");
+            range.SetStyle(styleString, @"""""""|'[^']*'|`[^`]*`");
+            range.SetStyle(styleDirective,
+                @"\b(reverse_proxy|file_server|try_files|rewrite|redirect|respond|root|templates|encode|php_fastcgi|handle|handle_path|route|log|header|basicauth|tls|bind|import|global_options|admin|auto_https|email|listen|experimental_http3|servers|metrics|status|abort|error|method|uri|match|vars|map|sort|group|push|copy_response|copy_response_headers|file_match|path|not|expression|acos|asin|atan|base64decode|base64encode|bcrypt|bool|capitalize|capitalize_all|ceil|coalesce|contains|cookie|div|div_rem|eq|exp|file_exists|float|floor|hash|host|http_filter|humanize|int|is_cert_request|len|lower|max|md5|min|mod|mod_rewrite|mul|neq|pow|querify|replace|replace_all|round|sha256|sha512|shift|sign|sin|split|sqrt|sub|tan|truncate|unique|upper|url_decode|url_encode|uuid|write|names|pki|client_ip|remote_ip)\b");
+            range.SetStyle(styleAddr, @"(?m)^[ \t]*[*\w.\-]+(:[0-9]+)?[ \t]*(?={|$)");
+            range.SetStyle(stylePlaceholder, @"\{[\w.]+\}");
         }
 
         // --- config acquisition ------------------------------------------------
@@ -275,8 +308,9 @@ namespace CaddyToolsWin
                 var raw = File.Exists(caddyFilePath)
                     ? File.ReadAllText(caddyFilePath, Encoding.UTF8)
                     : "";
-                // WinForms TextBox needs \r\n for line breaks; normalize any line ending.
-                editor.Text = raw.Replace("\r\n", "\n").Replace("\n", "\r\n");
+                // FastColoredTextBox stores text with \n line endings; it renders them fine.
+                editor.Text = raw.Replace("\r\n", "\n");
+                editor.IsChanged = false;
             }
             finally
             {
@@ -287,7 +321,7 @@ namespace CaddyToolsWin
             UpdateTitle();
         }
 
-        private void Editor_TextChanged(object sender, EventArgs e)
+        private void Editor_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (loading) return;
             dirty = true;
@@ -306,7 +340,9 @@ namespace CaddyToolsWin
             if (!dirty) return true;
             try
             {
-                File.WriteAllText(caddyFilePath, editor.Text, Encoding.UTF8);
+                // Caddyfile uses \n line endings; FCTB holds text as \n already.
+                File.WriteAllText(caddyFilePath, editor.Text, new UTF8Encoding(false));
+                editor.IsChanged = false;
                 dirty = false;
                 saveItem.Enabled = false;
                 UpdateTitle();

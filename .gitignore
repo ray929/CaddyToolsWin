@@ -10,4 +10,5 @@ obj/
 
 # local build artifacts
 CaddyToolsWin.exe
+/FastColoredTextBox.dll
 build.log

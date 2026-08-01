@@ -26,14 +26,14 @@ jobs:
           set CSC=%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
           if not exist "%CSC%" set CSC=%SystemRoot%\Microsoft.NET\Framework\v4.0.30319\csc.exe
           if not exist "%CSC%" ( echo Cannot find csc.exe. NET Framework 4.8 is required. & exit /b 1 )
-          "%CSC%" /target:winexe /out:CaddyToolsWin.exe /win32icon:caddy.ico /res:caddy.ico /r:System.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll Program.cs
+          "%CSC%" /target:winexe /out:CaddyToolsWin.exe /win32icon:caddy.ico /res:caddy.ico /r:System.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll /r:lib\FastColoredTextBox.dll Program.cs
 
       - name: Package zip
         shell: pwsh
         run: |
           $ver = "${{ github.event.inputs.version }}"
           $zip = "CaddyToolsWin-$ver-win64.zip"
-          Compress-Archive -Path CaddyToolsWin.exe, README.md, caddy.ico -DestinationPath $zip -Force
+          Compress-Archive -Path CaddyToolsWin.exe, lib\FastColoredTextBox.dll, README.md, caddy.ico -DestinationPath $zip -Force
           echo "ZIP=$zip" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       - name: Upload build artifact
