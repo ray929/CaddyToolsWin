@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <!--
-    Build on the GitHub Windows runner (WiX Toolset v3.11 is preinstalled):
+    Build on the GitHub Windows runner (WiX Toolset v3.11+ is preinstalled):
       candle -dProjectDir="%CD%" installer\CaddyToolsWin.wxs -out installer\CaddyToolsWin.wixobj
       light  installer\CaddyToolsWin.wixobj -out CaddyToolsWin-setup.msi
   -->
@@ -31,14 +31,14 @@
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLDIR" Name="Caddy Tools Win">
-          <Component Id="MainExecutable" Guid="1A2B3C4D-5E6F-4A0B-8C9D-0E1F2A3B4C5D">
+          <Component Id="MainExecutable" Guid="1A2B3C4D-5E6F-4A0B-8C9D-0E1F2A3B4C5D" Win64="yes">
             <File Id="CaddyToolsWinExe" Source="$(var.ProjectDir)\CaddyToolsWin.exe" KeyPath="yes" />
             <File Id="AvalonEditDll" Source="$(var.ProjectDir)\ICSharpCode.AvalonEdit.dll" />
             <File Id="CaddyIco" Source="$(var.ProjectDir)\caddy.ico" />
             <File Id="Readme" Source="$(var.ProjectDir)\README.md" />
           </Component>
 
-          <Component Id="StartMenuShortcut" Guid="2B3C4D5E-6F70-4A1B-9C0D-1E2F3A4B5C6D">
+          <Component Id="StartMenuShortcut" Guid="2B3C4D5E-6F70-4A1B-9C0D-1E2F3A4B5C6D" Win64="yes">
             <Shortcut Id="StartMenuShortcut"
               Directory="ProgramMenuDir"
               Name="Caddy Tools Win"
@@ -46,6 +46,7 @@
               Icon="CaddyIcon.exe"
               WorkingDirectory="INSTALLDIR"
               Description="Edit and manage a Caddy / FrankenPHP Caddyfile" />
+            <RemoveFolder Id="CleanStartMenu" Directory="ProgramMenuDir" On="uninstall" />
             <RegistryValue Root="HKCU"
               Key="Software\CaddyToolsWin"
               Name="installed" Type="integer" Value="1" KeyPath="yes" />
