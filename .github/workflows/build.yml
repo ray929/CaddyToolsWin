@@ -1,4 +1,4 @@
-name: Build Windows x64
+name: Build & Release (Windows x64)
 
 on:
   workflow_dispatch:
@@ -7,47 +7,78 @@ on:
         description: 'Release version / tag, e.g. v1.0.0'
         required: true
         default: 'v0.0.0'
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: Build and package (win64)
+    name: Build, package portable + setup (win64)
     runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build with system csc (NET Framework 4.8)
+      - name: Build with system csc (.NET Framework 4.8)
         shell: cmd
         run: |
           set CSC=%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
           if not exist "%CSC%" set CSC=%SystemRoot%\Microsoft.NET\Framework\v4.0.30319\csc.exe
-          if not exist "%CSC%" ( echo Cannot find csc.exe. NET Framework 4.8 is required. & exit /b 1 )
-          "%CSC%" /target:winexe /out:CaddyToolsWin.exe /win32icon:caddy.ico /res:caddy.ico /r:System.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll /r:lib\FastColoredTextBox.dll Program.cs
+          if not exist "%CSC%" ( echo Cannot find csc.exe. .NET Framework 4.8 is required. & exit /b 1 )
+          set REF=%ProgramFiles(x86)%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8
+          if not exist "%REF%" ( echo Cannot find .NET 4.8 reference assemblies. & exit /b 1 )
+          "%CSC%" /target:winexe /out:CaddyToolsWin.exe /win32icon:caddy.ico /r:System.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll /r:"%REF%\WindowsBase.dll" /r:"%REF%\PresentationCore.dll" /r:"%REF%\PresentationFramework.dll" /r:"%REF%\System.Xaml.dll" /r:lib\ICSharpCode.AvalonEdit.dll Program.cs
+          copy /Y lib\ICSharpCode.AvalonEdit.dll ICSharpCode.AvalonEdit.dll
 
-      - name: Package zip
+      - name: Resolve version
+        id: ver
         shell: pwsh
         run: |
-          $ver = "${{ github.event.inputs.version }}"
-          $zip = "CaddyToolsWin-$ver-win64.zip"
-          Compress-Archive -Path CaddyToolsWin.exe, lib\FastColoredTextBox.dll, README.md, caddy.ico -DestinationPath $zip -Force
-          echo "ZIP=$zip" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          if ("${{ github.event_name }}" -eq "push") {
+            $v = $env:GITHUB_REF -replace '^refs/tags/',''
+          } else {
+            $v = "${{ github.event.inputs.version }}"
+          }
+          echo "version=$v" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
-      - name: Upload build artifact
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $zip = "CaddyToolsWin-$env:version-portable-win64.zip"
+          Compress-Archive -Path CaddyToolsWin.exe, ICSharpCode.AvalonEdit.dll, README.md, caddy.ico -DestinationPath $zip -Force
+          echo "PORTABLE_ZIP=$zip" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Build setup msi (WiX)
+        shell: cmd
+        run: |
+          set WIX=%WIX%\bin
+          if not exist "%WIX%" set WIX=%ProgramFiles(x86)%\WiX Toolset v3.11\bin
+          if not exist "%WIX%" set WIX=%ProgramFiles%\WiX Toolset v3.11\bin
+          if not exist "%WIX%" ( echo Cannot find WiX Toolset. & exit /b 1 )
+          "%WIX%\candle.exe" -dProjectDir="%CD%" -dProductVersion="%version%" installer\CaddyToolsWin.wxs -out installer\CaddyToolsWin.wixobj
+          "%WIX%\light.exe" installer\CaddyToolsWin.wixobj -out "CaddyToolsWin-%version%-setup-win64.msi"
+          echo "SETUP_MSI=CaddyToolsWin-%version%-setup-win64.msi" > "%GITHUB_ENV%"
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: CaddyToolsWin-${{ github.event.inputs.version }}-win64
-          path: ${{ env.ZIP }}
+          name: CaddyToolsWin-${{ env.version }}-win64
+          path: |
+            ${{ env.PORTABLE_ZIP }}
+            ${{ env.SETUP_MSI }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.version }}
-          name: CaddyToolsWin ${{ github.event.inputs.version }}
-          files: ${{ env.ZIP }}
+          tag_name: ${{ env.version }}
+          name: Caddy Tools Win ${{ env.version }}
+          files: |
+            ${{ env.PORTABLE_ZIP }}
+            ${{ env.SETUP_MSI }}
           draft: false
           prerelease: false
         env:

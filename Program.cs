@@ -1,23 +1,41 @@
 using System;
 using System.IO;
 using System.Text;
-using System.Windows.Forms;
-using System.Drawing;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Interop;
 using Microsoft.Win32;
 using System.ServiceProcess;
 using System.Diagnostics;
-using FastColoredTextBoxNS;
+using WF = System.Windows.Forms; // FolderBrowserDialog (alias to avoid WPF/WinForms name clashes)
+using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.Highlighting;
+using ICSharpCode.AvalonEdit.Highlighting.Xshd;
+using System.Xml;
 
 namespace CaddyToolsWin
 {
     internal static class Program
     {
+        private static readonly string MutexName = "CaddyToolsWin-SingleInstance-{8F3E1A2B-5C7D-4E9F-8A1C-3B6D2E5F0A9D}";
+
         [STAThread]
         private static void Main()
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            bool createdNew;
+            using (var mutex = new System.Threading.Mutex(true, MutexName, out createdNew))
+            {
+                if (!createdNew)
+                {
+                    // Another instance is already running; bail out silently.
+                    return;
+                }
+                var app = new System.Windows.Application();
+                app.Run(new MainWindow());
+            }
         }
     }
 
@@ -116,111 +134,152 @@ namespace CaddyToolsWin
         }
     }
 
-    internal sealed class MainForm : Form
+    internal sealed class MainWindow : Window
     {
-        private MenuStrip menu;
-        private ToolStripMenuItem saveItem;
-        private ToolStripMenuItem openItem;
-        private ToolStripMenuItem validateItem;
-        private ToolStripMenuItem formatItem;
-        private ToolStripMenuItem reloadItem;
-        private FastColoredTextBox editor;
+        private Menu menu;
+        private MenuItem saveItem;
+        private MenuItem openItem;
+        private MenuItem validateItem;
+        private MenuItem formatItem;
+        private MenuItem reloadItem;
+        private TextEditor editor;
 
         private AppConfig config;
         private string caddyFilePath;
         private bool dirty;
         private bool loading;
 
-        public MainForm()
+        public MainWindow()
         {
             InitializeComponent();
             LoadIcon();
-        }
-
-        private void InitializeComponent()
-        {
-            menu = new MenuStrip();
-            saveItem = new ToolStripMenuItem("Save", null, (s, e) => Save(), Keys.Control | Keys.S);
-            openItem = new ToolStripMenuItem("Open", null, (s, e) => OpenDirectory());
-            validateItem = new ToolStripMenuItem("Validate", null, (s, e) => ValidateConfig());
-            formatItem = new ToolStripMenuItem("Format", null, (s, e) => FormatConfig());
-            reloadItem = new ToolStripMenuItem("Reload", null, (s, e) => Reload());
-            menu.Items.AddRange(new ToolStripItem[] { saveItem, openItem, validateItem, formatItem, reloadItem });
-
-            editor = new FastColoredTextBox
-            {
-                Dock = DockStyle.Fill,
-                Font = new Font("Consolas", 10.5F, FontStyle.Regular, GraphicsUnit.Point),
-                Language = Language.Custom,
-                ShowLineNumbers = true,
-                WordWrap = false,
-                TabLength = 4,
-                Text = ""
-            };
-            SetupCaddySyntax();
-            editor.TextChanged += Editor_TextChanged;
-
-            Controls.Add(editor);
-            Controls.Add(menu);
-            MainMenuStrip = menu;
-
-            Text = "Caddyfile - Caddy Tools Win";
-            ClientSize = new Size(900, 600);
-            StartPosition = FormStartPosition.CenterScreen;
-
-            Shown += (s, e) =>
+            Loaded += (s, e) =>
             {
                 if (!EnsureConfig()) { Close(); return; }
                 LoadFile();
             };
-
-            FormClosing += (s, e) =>
+            Closing += (s, e) =>
             {
                 if (!CheckUnsaved("exiting")) e.Cancel = true;
             };
+        }
+
+        private void InitializeComponent()
+        {
+            // Menu
+            saveItem = new MenuItem { Header = "_Save" };
+            saveItem.InputGestureText = "Ctrl+S";
+            saveItem.Click += (s, e) => Save();
+            openItem = new MenuItem { Header = "_Open" };
+            openItem.Click += (s, e) => OpenDirectory();
+            validateItem = new MenuItem { Header = "_Validate" };
+            validateItem.Click += (s, e) => ValidateConfig();
+            formatItem = new MenuItem { Header = "_Format" };
+            formatItem.Click += (s, e) => FormatConfig();
+            reloadItem = new MenuItem { Header = "_Reload" };
+            reloadItem.Click += (s, e) => Reload();
+
+            menu = new Menu();
+            menu.Items.Add(saveItem);
+            menu.Items.Add(openItem);
+            menu.Items.Add(validateItem);
+            menu.Items.Add(formatItem);
+            menu.Items.Add(reloadItem);
+
+            // Editor (AvalonEdit)
+            editor = new TextEditor
+            {
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 13.0,
+                ShowLineNumbers = true,
+                WordWrap = false,
+                SyntaxHighlighting = CaddyHighlighting.Instance,
+                Background = Brushes.White,
+                Foreground = Brushes.Black
+            };
+            editor.Options.IndentationSize = 4;
+            editor.Options.ConvertTabsToSpaces = false;
+            editor.Options.EnableHyperlinks = false;
+            editor.Options.EnableEmailHyperlinks = false;
+            editor.TextChanged += Editor_TextChanged;
+            editor.PreviewKeyDown += Editor_PreviewKeyDown;
+
+            var dock = new DockPanel();
+            DockPanel.SetDock(menu, Dock.Top);
+            dock.Children.Add(menu);
+            dock.Children.Add(editor);
+
+            Content = dock;
+            Title = "Caddyfile - Caddy Tools Win";
+            Width = 900;
+            Height = 600;
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
         }
 
         private void LoadIcon()
         {
             try
             {
-                using (var stream = GetType().Assembly.GetManifestResourceStream("caddy.ico"))
-                {
-                    if (stream != null) Icon = new Icon(stream);
-                }
+                var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "caddy.ico");
+                if (File.Exists(path))
+                    Icon = new BitmapImage(new Uri(path));
             }
             catch { /* keep default icon */ }
         }
 
-        // --- Caddyfile syntax highlighting (FastColoredTextBox) ----------------
-
-        private TextStyle styleComment;
-        private TextStyle styleDirective;
-        private TextStyle styleAddr;
-        private TextStyle styleString;
-        private TextStyle stylePlaceholder;
-
-        private void SetupCaddySyntax()
+        private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            styleComment = new TextStyle(Brushes.Gray, null, FontStyle.Italic);
-            styleDirective = new TextStyle(Brushes.Navy, null, FontStyle.Bold);
-            styleAddr = new TextStyle(Brushes.Teal, null, FontStyle.Regular);
-            styleString = new TextStyle(Brushes.Maroon, null, FontStyle.Regular);
-            stylePlaceholder = new TextStyle(Brushes.Purple, null, FontStyle.Regular);
-
-            editor.TextChanged += (s, e) => HighlightCaddy(e.ChangedRange);
+            if (e.KeyboardDevice.Modifiers == ModifierKeys.Control && e.Key == Key.S)
+            {
+                Save();
+                e.Handled = true;
+            }
         }
 
-        private void HighlightCaddy(Range range)
+        // --- Caddyfile syntax highlighting (AvalonEdit) ----------------------
+
+        private static class CaddyHighlighting
         {
-            range.ClearStyle(StyleIndex.All);
-            // Comments and strings first, then directives, addresses, placeholders.
-            range.SetStyle(styleComment, @"#.*");
-            range.SetStyle(styleString, @"""""""|'[^']*'|`[^`]*`");
-            range.SetStyle(styleDirective,
-                @"\b(reverse_proxy|file_server|try_files|rewrite|redirect|respond|root|templates|encode|php_fastcgi|handle|handle_path|route|log|header|basicauth|tls|bind|import|global_options|admin|auto_https|email|listen|experimental_http3|servers|metrics|status|abort|error|method|uri|match|vars|map|sort|group|push|copy_response|copy_response_headers|file_match|path|not|expression|acos|asin|atan|base64decode|base64encode|bcrypt|bool|capitalize|capitalize_all|ceil|coalesce|contains|cookie|div|div_rem|eq|exp|file_exists|float|floor|hash|host|http_filter|humanize|int|is_cert_request|len|lower|max|md5|min|mod|mod_rewrite|mul|neq|pow|querify|replace|replace_all|round|sha256|sha512|shift|sign|sin|split|sqrt|sub|tan|truncate|unique|upper|url_decode|url_encode|uuid|write|names|pki|client_ip|remote_ip)\b");
-            range.SetStyle(styleAddr, @"(?m)^[ \t]*[*\w.\-]+(:[0-9]+)?[ \t]*(?={|$)");
-            range.SetStyle(stylePlaceholder, @"\{[\w.]+\}");
+            private static IHighlightingDefinition _instance;
+            public static IHighlightingDefinition Instance
+            {
+                get { return _instance ?? (_instance = Load()); }
+            }
+
+            private static IHighlightingDefinition Load()
+            {
+                var xshd =
+@"<SyntaxDefinition name=""Caddyfile"" xmlns=""http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008"">
+  <Color name=""Comment"" foreground=""#FF6A9955"" />
+  <Color name=""String"" foreground=""#FFA31515"" />
+  <Color name=""Placeholder"" foreground=""#FF800080"" />
+  <Color name=""Directive"" foreground=""#FF0000FF"" fontWeight=""bold"" />
+  <RuleSet>
+    <Span color=""Comment"">
+      <Begin>\#</Begin>
+    </Span>
+    <Span color=""String"">
+      <Begin>&quot;</Begin>
+      <End>&quot;</End>
+    </Span>
+    <Span color=""String"">
+      <Begin>'</Begin>
+      <End>'</End>
+    </Span>
+    <Span color=""String"">
+      <Begin>`</Begin>
+      <End>`</End>
+    </Span>
+    <Rule color=""Placeholder"">{[\w.]+}</Rule>
+    <Rule color=""Directive"">(?&lt;=^|[ \t])(abort|acme_server|basic_auth|bind|encode|error|file|file_server|forward_auth|fs|handle|handle_errors|handle_path|header|host|import|intercept|invoke|log|log_append|log_skip|log_name|map|method|metrics|php_fastcgi|push|redir|request_body|request_header|respond|reverse_proxy|rewrite|root|route|templates|tls|tracing|try_files|uri|vars|debug|http_port|https_port|default_bind|order|storage|storage_clean_interval|admin|persist_config|grace_period|shutdown_delay|auto_https|email|default_sni|fallback_sni|local_certs|skip_install_trust|acme_ca|acme_ca_root|acme_eab|acme_dns|dns|ech|on_demand_tls|key_type|cert_issuer|renew_interval|cert_lifetime|ocsp_interval|ocsp_stapling|renewal_window_ratio|preferred_chains|servers|filesystem|pki|events|frankenphp|num_threads|max_threads|max_wait_time|max_idle_time|max_requests|php_ini|worker|php_server|split_path|resolve_root_symlink|env|match|watch|name|num|enable_full_duplex)\b</Rule>
+  </RuleSet>
+</SyntaxDefinition>";
+                using (var reader = new StringReader(xshd))
+                using (var xml = XmlReader.Create(reader))
+                {
+                    return HighlightingLoader.Load(xml, null);
+                }
+            }
         }
 
         // --- config acquisition ------------------------------------------------
@@ -241,11 +300,13 @@ namespace CaddyToolsWin
 
         private bool PromptForDirectory(out string dir)
         {
-            using (var dlg = new FolderBrowserDialog())
+            using (var dlg = new WF.FolderBrowserDialog())
             {
                 dlg.Description = "Select the Caddy / FrankenPHP directory (it must contain a Caddyfile)";
                 dlg.ShowNewFolderButton = false;
-                var ok = dlg.ShowDialog() == DialogResult.OK;
+                var owner = new WindowInteropHelper(this).Handle;
+                var result = owner != IntPtr.Zero ? dlg.ShowDialog(new Win32Window(owner)) : dlg.ShowDialog();
+                var ok = result == WF.DialogResult.OK;
                 dir = ok ? dlg.SelectedPath : null;
                 return ok;
             }
@@ -258,9 +319,9 @@ namespace CaddyToolsWin
             var cf = Path.Combine(dir, "Caddyfile");
             if (!File.Exists(cf))
             {
-                MessageBox.Show(this,
+                System.Windows.MessageBox.Show(this,
                     "No Caddyfile found in this directory.\r\nPlease choose the correct Caddy / FrankenPHP directory.",
-                    "Invalid directory", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    "Invalid directory", MessageBoxButton.OK, MessageBoxImage.Error);
                 return null;
             }
 
@@ -269,9 +330,9 @@ namespace CaddyToolsWin
             else if (File.Exists(Path.Combine(dir, "frankenphp.exe"))) exe = "frankenphp.exe";
             if (exe == null)
             {
-                MessageBox.Show(this,
+                System.Windows.MessageBox.Show(this,
                     "Neither caddy.exe nor frankenphp.exe was found in this directory.\r\nPlease choose the correct Caddy / FrankenPHP directory.",
-                    "Invalid directory", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    "Invalid directory", MessageBoxButton.OK, MessageBoxImage.Error);
                 return null;
             }
 
@@ -308,30 +369,29 @@ namespace CaddyToolsWin
                 var raw = File.Exists(caddyFilePath)
                     ? File.ReadAllText(caddyFilePath, Encoding.UTF8)
                     : "";
-                // FastColoredTextBox stores text with \n line endings; it renders them fine.
+                // AvalonEdit preserves CRLF; normalize to LF for consistency with caddy.
                 editor.Text = raw.Replace("\r\n", "\n");
-                editor.IsChanged = false;
             }
             finally
             {
                 loading = false;
             }
             dirty = false;
-            saveItem.Enabled = false;
+            saveItem.IsEnabled = false;
             UpdateTitle();
         }
 
-        private void Editor_TextChanged(object sender, TextChangedEventArgs e)
+        private void Editor_TextChanged(object sender, EventArgs e)
         {
             if (loading) return;
             dirty = true;
-            saveItem.Enabled = true;
+            saveItem.IsEnabled = true;
             UpdateTitle();
         }
 
         private void UpdateTitle()
         {
-            Text = (dirty ? "* " : "") + "Caddyfile - Caddy Tools Win";
+            Title = (dirty ? "* " : "") + "Caddyfile - Caddy Tools Win";
         }
 
         // Returns true if there is nothing to save or the save succeeded.
@@ -340,18 +400,16 @@ namespace CaddyToolsWin
             if (!dirty) return true;
             try
             {
-                // Caddyfile uses \n line endings; FCTB holds text as \n already.
                 File.WriteAllText(caddyFilePath, editor.Text, new UTF8Encoding(false));
-                editor.IsChanged = false;
                 dirty = false;
-                saveItem.Enabled = false;
+                saveItem.IsEnabled = false;
                 UpdateTitle();
                 return true;
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Failed to save:\r\n" + ex.Message, "Save",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                System.Windows.MessageBox.Show(this, "Failed to save:\r\n" + ex.Message, "Save",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
         }
@@ -361,10 +419,10 @@ namespace CaddyToolsWin
         private bool CheckUnsaved(string action)
         {
             if (!dirty) return true;
-            var r = MessageBox.Show(this,
+            var r = System.Windows.MessageBox.Show(this,
                 "You have unsaved changes.\r\nSave before " + action + "?",
-                "Unsaved changes", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-            if (r == DialogResult.Yes)
+                "Unsaved changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (r == MessageBoxResult.Yes)
                 return Save(); // proceed only if the save succeeded
             return false;      // No -> cancel the operation
         }
@@ -408,8 +466,8 @@ namespace CaddyToolsWin
             var args = "validate --config \"" + caddyFilePath + "\"";
             string output;
             var code = RunCaptured(args, out output);
-            MessageBox.Show(this, (code == 0 ? "Configuration is valid.\r\n\r\n" : "Validation failed.\r\n\r\n") + output,
-                "Validate", MessageBoxButtons.OK, code == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+            System.Windows.MessageBox.Show(this, (code == 0 ? "Configuration is valid.\r\n\r\n" : "Validation failed.\r\n\r\n") + output,
+                "Validate", MessageBoxButton.OK, code == 0 ? MessageBoxImage.Information : MessageBoxImage.Error);
         }
 
         private void FormatConfig()
@@ -426,8 +484,8 @@ namespace CaddyToolsWin
             }
             else
             {
-                MessageBox.Show(this, "Format failed.\r\n\r\n" + output, "Format",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                System.Windows.MessageBox.Show(this, "Format failed.\r\n\r\n" + output, "Format",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -440,11 +498,11 @@ namespace CaddyToolsWin
             }
             else
             {
-            var args = "reload --config \"" + caddyFilePath + "\"";
-            string output;
-            var code = RunCaptured(args, out output);
-                MessageBox.Show(this, (code == 0 ? "Reload triggered.\r\n\r\n" : "Reload failed.\r\n\r\n") + output,
-                    "Reload", MessageBoxButtons.OK, code == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+                var args = "reload --config \"" + caddyFilePath + "\"";
+                string output;
+                var code = RunCaptured(args, out output);
+                System.Windows.MessageBox.Show(this, (code == 0 ? "Reload triggered.\r\n\r\n" : "Reload failed.\r\n\r\n") + output,
+                    "Reload", MessageBoxButton.OK, code == 0 ? MessageBoxImage.Information : MessageBoxImage.Error);
             }
         }
 
@@ -472,17 +530,17 @@ namespace CaddyToolsWin
                 }
 
                 var output = File.Exists(tmp) ? File.ReadAllText(tmp, Encoding.Default).Trim() : "(no output)";
-                MessageBox.Show(this, output, "Reload Service", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                System.Windows.MessageBox.Show(this, output, "Reload Service", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (System.ComponentModel.Win32Exception)
             {
-                MessageBox.Show(this, "Reload canceled (administrator permission was not granted).",
-                    "Reload", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                System.Windows.MessageBox.Show(this, "Reload canceled (administrator permission was not granted).",
+                    "Reload", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Reload failed:\r\n" + ex.Message, "Reload",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                System.Windows.MessageBox.Show(this, "Reload failed:\r\n" + ex.Message, "Reload",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -490,5 +548,13 @@ namespace CaddyToolsWin
                 try { File.Delete(tmp); } catch { }
             }
         }
+    }
+
+    // Adapter so System.Windows.Forms.FolderBrowserDialog can be parented to a WPF window.
+    internal sealed class Win32Window : WF.IWin32Window
+    {
+        private readonly IntPtr _handle;
+        public Win32Window(IntPtr handle) { _handle = handle; }
+        public IntPtr Handle { get { return _handle; } }
     }
 }

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <!--
+    Build on the GitHub Windows runner (WiX Toolset v3.11 is preinstalled):
+      candle -dProjectDir="%CD%" installer\CaddyToolsWin.wxs -out installer\CaddyToolsWin.wixobj
+      light  installer\CaddyToolsWin.wixobj -out CaddyToolsWin-setup.msi
+  -->
+  <Product
+      Id="*"
+      Name="Caddy Tools Win"
+      Language="1033"
+      Version="$(var.ProductVersion)"
+      Manufacturer="Caddy Tools Win"
+      UpgradeCode="E3F8A1B2-7C4D-4A9E-9B1F-2D6C8E0A4B7C">
+
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Caddy Tools Win is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Require .NET Framework 4.8 -->
+    <Property Id="NETFRAMEWORK48">
+      <RegistrySearch Id="NetFx48" Root="HKLM"
+        Key="SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"
+        Name="Release" Type="raw" />
+    </Property>
+    <Condition Message="[ProductName] requires .NET Framework 4.8 or later.">
+      <![CDATA[Installed OR (NETFRAMEWORK48 >= "#528040")]]>
+    </Condition>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="Caddy Tools Win">
+          <Component Id="MainExecutable" Guid="1A2B3C4D-5E6F-4A0B-8C9D-0E1F2A3B4C5D">
+            <File Id="CaddyToolsWinExe" Source="$(var.ProjectDir)\CaddyToolsWin.exe" KeyPath="yes" />
+            <File Id="AvalonEditDll" Source="$(var.ProjectDir)\ICSharpCode.AvalonEdit.dll" />
+            <File Id="CaddyIco" Source="$(var.ProjectDir)\caddy.ico" />
+            <File Id="Readme" Source="$(var.ProjectDir)\README.md" />
+          </Component>
+
+          <Component Id="StartMenuShortcut" Guid="2B3C4D5E-6F70-4A1B-9C0D-1E2F3A4B5C6D">
+            <Shortcut Id="StartMenuShortcut"
+              Directory="ProgramMenuDir"
+              Name="Caddy Tools Win"
+              Target="[INSTALLDIR]CaddyToolsWin.exe"
+              Icon="CaddyIcon.exe"
+              WorkingDirectory="INSTALLDIR"
+              Description="Edit and manage a Caddy / FrankenPHP Caddyfile" />
+            <RegistryValue Root="HKCU"
+              Key="Software\CaddyToolsWin"
+              Name="installed" Type="integer" Value="1" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ProgramMenuDir" Name="Caddy Tools Win" />
+      </Directory>
+    </Directory>
+
+    <Icon Id="CaddyIcon.exe" SourceFile="$(var.ProjectDir)\caddy.ico" />
+    <Feature Id="ProductFeature" Title="Caddy Tools Win" Level="1">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Product>
+</Wix>

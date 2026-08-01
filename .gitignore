@@ -2,13 +2,17 @@
 .vscode
 .codebuddy
 .ai
+.trae
 Thumbs.db
 .DS_Store
 bin/
 obj/
 *.user
 
+.temp/
+.test/
+
 # local build artifacts
 CaddyToolsWin.exe
-/FastColoredTextBox.dll
+/ICSharpCode.AvalonEdit.dll
 build.log
