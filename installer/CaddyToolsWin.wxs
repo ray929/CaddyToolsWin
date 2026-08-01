@@ -14,7 +14,7 @@
       Manufacturer="Caddy Tools Win"
       UpgradeCode="E3F8A1B2-7C4D-4A9E-9B1F-2D6C8E0A4B7C">
 
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" Platform="x64" />
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of Caddy Tools Win is already installed." />
     <MediaTemplate EmbedCab="yes" />
@@ -34,7 +34,7 @@
     <UIRef Id="WixUI_InstallDir" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFiles64Folder">
+      <Directory Id="LocalAppDataFolder">
         <Directory Id="INSTALLDIR" Name="Caddy Tools Win">
           <Component Id="MainExecutable" Guid="1A2B3C4D-5E6F-4A0B-8C9D-0E1F2A3B4C5D" Win64="yes">
             <File Id="CaddyToolsWinExe" Source="$(var.ProjectDir)\CaddyToolsWin.exe" KeyPath="yes" />
